@@ -28,4 +28,9 @@ python elman_rnn.py train
 
 python elman_rnn.py gradcheck
 
+# Your LSTM implementation
+I have already prepared the same template so that you can run your implementation. 
 
+The gradcheck should be very similar and the implementation should be able to pass it (If too many warnings happen and the relative difference is > 0.01 then its probably incorrect). 
+
+Then you can implement sampling and see how it trains to generate new characters (It should generate much better than the Vanilla RNN). 
