@@ -45,7 +45,7 @@ char_to_ix = {ch: i for i, ch in enumerate(chars)}
 ix_to_char = {i: ch for i, ch in enumerate(chars)}
 std = 0.1
 
-option = 'gradcheck'  # sys.argv[1], 'train' or 'gradcheck'
+option = 'train'  # sys.argv[1], 'train' or 'gradcheck'
 
 # hyperparameters
 emb_size = 4
@@ -319,7 +319,7 @@ def sample(i_memory, seed_ix, i_n):
             if ix[j] == 1:
                 index = j
         x[index] = 1
-        sample_ix.append(index)
+        i_sample_ix.append(index)
 
     return i_sample_ix
 
