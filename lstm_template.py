@@ -76,7 +76,7 @@ Why = np.random.randn(vocab_size, hidden_size)*0.01  # hidden to output
 by = np.zeros((vocab_size, 1))  # output bias
 
 
-def forward(inputs, targets, memory):
+def forward(i_inputs, i_targets, i_memory):
     """
     inputs,targets are both list of integers.
     hprev is Hx1 array of initial hidden state
@@ -85,20 +85,20 @@ def forward(inputs, targets, memory):
 
     # The LSTM is different than the simple RNN that it has two memory cells
     # so here you need two different hidden layers
-    hprev, cprev = memory
+    i_hprev, i_cprev = i_memory
 
     # Here you should allocate some variables to store the activations during forward
     # One of them here is to store the hiddens and the cells
     hs, cs, xs, wes, zs, os, ps, ys = {}, {}, {}, {}, {}, {}, {}, {}
 
-    hs[-1] = np.copy(hprev)
-    cs[-1] = np.copy(cprev)
+    hs[-1] = np.copy(i_hprev)
+    cs[-1] = np.copy(i_cprev)
 
-    loss = 0
+    i_loss = 0
     # forward pass
-    for t in range(len(inputs)):
+    for t in range(len(i_inputs)):
         xs[t] = np.zeros((vocab_size, 1))  # encode in 1-of-k representation
-        xs[t][inputs[t]] = 1
+        xs[t][i_inputs[t]] = 1
 
         # convert word indices to word embeddings
         wes[t] = np.dot(Wex, xs[t])
@@ -152,29 +152,29 @@ def forward(inputs, targets, memory):
         # create an one hot vector for the label y
 
         ys[t] = np.zeros((vocab_size, 1))
-        ys[t][targets[t]] = 1
+        ys[t][i_targets[t]] = 1
 
         loss_t = np.sum(-np.log(ps[t]) * ys[t])
 
-        loss += loss_t
+        i_loss += loss_t
 
         # and then cross-entropy (see the elman-rnn file for the hint)
 
     # define your activations
-    memory = (hs[len(inputs)-1], cs[len(inputs)-1])
-    activations = (xs, cs, hs, os, ps, ys, wes)
+    i_memory = (hs[len(i_inputs)-1], cs[len(i_inputs)-1])
+    i_activations = (xs, cs, hs, os, ps, ys, wes)
 
-    return loss, activations, memory
+    return i_loss, i_activations, i_memory
 
 
 def backward(i_activations, clipping=True):
 
     # backward pass: compute gradients going backwards
     # Here we allocate memory for the gradients
-    dWex, dWhy = np.zeros_like(Wex), np.zeros_like(Why)
-    dby = np.zeros_like(by)
-    dWf, dWi, dWc, dWo = np.zeros_like(Wf), np.zeros_like(Wi),np.zeros_like(Wc), np.zeros_like(Wo)
-    dbf, dbi, dbc, dbo = np.zeros_like(bf), np.zeros_like(bi),np.zeros_like(bc), np.zeros_like(bo)
+    i_dWex, i_dWhy = np.zeros_like(Wex), np.zeros_like(Why)
+    i_dby = np.zeros_like(by)
+    i_dWf, i_dWi, i_dWc, i_dWo = np.zeros_like(Wf), np.zeros_like(Wi),np.zeros_like(Wc), np.zeros_like(Wo)
+    i_dbf, i_dbi, i_dbc, i_dbo = np.zeros_like(bf), np.zeros_like(bi),np.zeros_like(bc), np.zeros_like(bo)
 
     xs, cs, hs, os, ps, ys, wes = i_activations
 
@@ -198,14 +198,17 @@ def backward(i_activations, clipping=True):
 
         do = ps[t] - ys[t]
 
-        dWhy += np.dot(do, hs[t].T)
-        dby += do
+        i_dWhy += np.dot(do, hs[t].T)
+        i_dby += do
         # print("Wo.T: ", Wo.T.shape)
         # print("bo: ", bo.shape)
         # print("bc: ", bc.shape)
         # print("bi: ", bi.shape)
         # print("bf: ", bf.shape)
-        dhnext = np.dot(Why.T, do) + np.dot(Wo.T, do_gate_pre_future)[0:hs_row, ...] + np.dot(Wc.T, dc_hat_pre_future)[0:hs_row, ...] + np.dot(Wi.T, di_gate_pre_future)[0:hs_row, ...] + np.dot(Wf.T, df_gate_pre_future)[0:hs_row, ...]
+        dhnext = np.dot(Why.T, do) + np.dot(Wo.T, do_gate_pre_future)[0:hs_row, ...] \
+                                   + np.dot(Wc.T, dc_hat_pre_future)[0:hs_row, ...] \
+                                   + np.dot(Wi.T, di_gate_pre_future)[0:hs_row, ...] \
+                                   + np.dot(Wf.T, df_gate_pre_future)[0:hs_row, ...]
 
         o_gate = sigmoid(np.dot(Wo, zs[t]) + bo)
         do_gate = dhnext * tanh(cs[t])
@@ -214,8 +217,8 @@ def backward(i_activations, clipping=True):
         # output gate path
         dsigmoid_o_gate = dsigmoid(o_gate)
         do_gate_pre = dsigmoid_o_gate * do_gate
-        dbo += do_gate_pre
-        dWo += np.dot(do_gate_pre, zs[t].T)
+        i_dbo += do_gate_pre
+        i_dWo += np.dot(do_gate_pre, zs[t].T)
         dzs = np.dot(Wo.T, do_gate_pre)
 
         # print("dwes: ", dwes.shape)
@@ -235,27 +238,27 @@ def backward(i_activations, clipping=True):
         # forget gate path
         dsigmoid_f_gate = dsigmoid(f_gate)
         df_gate_pre = dsigmoid_f_gate * df_gate
-        dbf += df_gate_pre
-        dWf += np.dot(df_gate_pre, zs[t].T)
+        i_dbf += df_gate_pre
+        i_dWf += np.dot(df_gate_pre, zs[t].T)
         dzs += np.dot(Wf.T, df_gate_pre)
 
         # input gate path
         dsigmoid_i_gate = dsigmoid(i_gate)
         di_gate_pre = dsigmoid_i_gate * di_gate
-        dbi += di_gate_pre
-        dWi += np.dot(di_gate_pre, zs[t].T)
+        i_dbi += di_gate_pre
+        i_dWi += np.dot(di_gate_pre, zs[t].T)
         dzs += np.dot(Wi.T, di_gate_pre)
 
         # candidate memory (c hat) path
         dtanh_c_hat = dtanh(c_hat)
         dc_hat_pre = dtanh_c_hat * dc_hat
-        dbc += dc_hat_pre
-        dWc += np.dot(dc_hat_pre, zs[t].T)
+        i_dbc += dc_hat_pre
+        i_dWc += np.dot(dc_hat_pre, zs[t].T)
         dzs += np.dot(Wc.T, dc_hat_pre)
 
         # delta xs[t]
         dwes = dzs[hs_row:, ...]
-        dWex += np.dot(dwes, xs[t].T)
+        i_dWex += np.dot(dwes, xs[t].T)
 
         dc_future = dcnext
         f_gate_future = f_gate
@@ -269,15 +272,15 @@ def backward(i_activations, clipping=True):
 
     if clipping:
         # clip to mitigate exploding gradients
-        for dparam in [dWex, dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWhy, dby]:
+        for dparam in [i_dWex, i_dWf, i_dWi, i_dWo, i_dWc, i_dbf, i_dbi, i_dbo, i_dbc, i_dWhy, i_dby]:
             np.clip(dparam, -5, 5, out=dparam)
 
-    gradients = (dWex, dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWhy, dby)
+    i_gradients = (i_dWex, i_dWf, i_dWi, i_dWo, i_dWc, i_dbf, i_dbi, i_dbo, i_dbc, i_dWhy, i_dby)
 
-    return gradients
+    return i_gradients
 
 
-def sample(i_memory, seed_ix, n):
+def sample(i_memory, seed_ix, i_n):
     """
     sample a sequence of integers from the model
     h is memory state, seed_ix is seed letter for first time step
@@ -288,7 +291,7 @@ def sample(i_memory, seed_ix, n):
     i_sample_ix = []
     x[seed_ix] = 1
 
-    for t in range(n):
+    for t in range(i_n):
         wes = np.dot(Wex, x)
         z = np.row_stack((h, wes))
 
@@ -306,10 +309,10 @@ def sample(i_memory, seed_ix, n):
 
         o = np.dot(Why, h) + by
 
-        p = softmax(o)
+        i_p = softmax(o)
 
         # the the distribution, we randomly generate samples:
-        ix = np.random.multinomial(1, p.ravel())
+        ix = np.random.multinomial(1, i_p.ravel())
         x = np.zeros((vocab_size, 1))
 
         for j in range(len(ix)):
@@ -338,9 +341,9 @@ if option == 'train':
     while True:
         # prepare inputs (we're sweeping from left to right in steps seq_length long)
         if p+seq_length+1 >= len(data) or n == 0:
-            hprev = np.zeros((hidden_size,1)) # reset RNN memory
-            cprev = np.zeros((hidden_size,1))
-        p = 0 # go from start of data
+            hprev = np.zeros((hidden_size, 1))  # reset RNN memory
+            cprev = np.zeros((hidden_size, 1))
+        p = 0  # go from start of data
         inputs = [char_to_ix[ch] for ch in data[p:p+seq_length]]
         targets = [char_to_ix[ch] for ch in data[p+1:p+seq_length+1]]
 
@@ -348,7 +351,7 @@ if option == 'train':
         if n % 100 == 0:
             sample_ix = sample((hprev, cprev), inputs[0], 200)
             txt = ''.join(ix_to_char[ix] for ix in sample_ix)
-            print ('----\n %s \n----' % (txt, ))
+            print('----\n %s \n----' % (txt, ))
 
         # forward seq_length characters through the net and fetch gradient
         loss, activations, memory = forward(inputs, targets, (hprev, cprev))
@@ -357,12 +360,13 @@ if option == 'train':
         hprev, cprev = memory
         dWex, dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWhy, dby = gradients
         smooth_loss = smooth_loss * 0.999 + loss * 0.001
-        if n % 100 == 0: print('iter %d, loss: %f' % (n, smooth_loss))  # print progress
+        if n % 100 == 0:
+            print('iter %d, loss: %f' % (n, smooth_loss))  # print progress
 
         # perform parameter update with Adagrad
         for param, dparam, mem in zip([Wf, Wi, Wo, Wc, bf, bi, bo, bc, Wex, Why, by],
-                                    [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex, dWhy, dby],
-                                    [mWf, mWi, mWo, mWc, mbf, mbi, mbo, mbc, mWex, mWhy, mby]):
+                                      [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex, dWhy, dby],
+                                      [mWf, mWi, mWo, mWc, mbf, mbi, mbo, mbc, mWex, mWhy, mby]):
             mem += dparam * dparam
             param += -learning_rate * dparam / np.sqrt(mem + 1e-8)  # adagrad update
 
@@ -390,8 +394,8 @@ elif option == 'gradcheck':
     dWex, dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWhy, dby = gradients
 
     for weight, grad, name in zip([Wf, Wi, Wo, Wc, bf, bi, bo, bc, Wex, Why, by], 
-                                   [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex    , dWhy, dby],
-                                   ['Wf', 'Wi', 'Wo', 'Wc', 'bf', 'bi', 'bo', 'bc', 'Wex', 'Why', 'by']):
+                                  [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex, dWhy, dby],
+                                  ['Wf', 'Wi', 'Wo', 'Wc', 'bf', 'bi', 'bo', 'bc', 'Wex', 'Why', 'by']):
 
         str_ = ("Dimensions dont match between weight and gradient %s and %s." % (weight.shape, grad.shape))
         assert(weight.shape == grad.shape), str_
