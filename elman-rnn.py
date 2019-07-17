@@ -168,7 +168,7 @@ def backward(activations, clipping=True):
         dby += do
 
         # because h is connected to both o and the next h, we sum the gradients up
-        dh = np.dot(Why.T, do) + dh
+        dh += np.dot(Why.T, do)
 
         # backprop through the activation function (tanh)
         dtanh_h = 1 - hs[t] * hs[t]
@@ -228,7 +228,7 @@ def sample(h, seed_ix, n):
     return generated_chars
 
 
-option = sys.argv[1]  # train or gradcheck
+option = 'gradcheck'  # sys.argv[1]  # train or gradcheck
 
 if option == 'train':
 
