@@ -11,15 +11,17 @@ import sys
 # Since numpy doesn't have a function for sigmoid
 # We implement it manually here
 def sigmoid(x):
-  return 1 / (1 + np.exp(-x))
+    return 1 / (1 + np.exp(-x))
 
 
 # The derivative of the sigmoid function
 def dsigmoid(y):
     return y * (1 - y)
 
+
 def tanh(x):
     return (np.exp(x) - np.exp(-x)) / (np.exp(x) + np.exp(-x))
+
 
 # The derivative of the tanh function
 def dtanh(x):
@@ -34,14 +36,16 @@ def softmax(x):
 
 # data I/O
 data = open('data/input.txt', 'r').read()  # should be simple plain text file
-chars = list(set(data)) # unique characters in the data.
+chars = list(set(data))  # unique characters in the data.
 data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
-char_to_ix = {ch: i for i, ch in enumerate(chars)}  #a python dictionary to map each character to an index from 0 - (vocab_size-1).
+
+# a python dictionary to map each character to an index from 0 - (vocab_size-1).
+char_to_ix = {ch: i for i, ch in enumerate(chars)}
 ix_to_char = {i: ch for i, ch in enumerate(chars)}
 std = 0.1
 
-option = 'gradcheck'  # sys.argv[1], 'train'
+option = 'gradcheck'  # sys.argv[1], 'train' or 'gradcheck'
 
 # hyperparameters
 emb_size = 4
@@ -163,7 +167,7 @@ def forward(inputs, targets, memory):
     return loss, activations, memory
 
 
-def backward(activations, clipping=True):
+def backward(i_activations, clipping=True):
 
     # backward pass: compute gradients going backwards
     # Here we allocate memory for the gradients
@@ -172,13 +176,18 @@ def backward(activations, clipping=True):
     dWf, dWi, dWc, dWo = np.zeros_like(Wf), np.zeros_like(Wi),np.zeros_like(Wc), np.zeros_like(Wo)
     dbf, dbi, dbc, dbo = np.zeros_like(bf), np.zeros_like(bi),np.zeros_like(bc), np.zeros_like(bo)
 
-    xs, cs, hs, os, ps, ys, wes = activations
+    xs, cs, hs, os, ps, ys, wes = i_activations
 
     zs = {}
     # similar to the hidden states in the vanilla RNN
     # We need to initialize the gradients for these variables
-    dhnext = np.zeros_like(hs[0])
-    dcnext = np.zeros_like(cs[0])
+
+    dc_future = np.zeros_like(cs[0])
+    f_gate_future = np.zeros_like(bf)
+    do_gate_pre_future = np.zeros_like(bo)
+    dc_hat_pre_future = np.zeros_like(bc)
+    di_gate_pre_future = np.zeros_like(bi)
+    df_gate_pre_future = np.zeros_like(bf)
 
     # back propagation through time starts here
     for t in reversed(range(len(inputs))):
@@ -186,58 +195,77 @@ def backward(activations, clipping=True):
         zs[t] = np.row_stack((hs[t - 1], wes[t]))
 
         hs_row, hs_col = hs[t-1].shape
-        wes_row, wes_col = wes[t].shape
 
         do = ps[t] - ys[t]
 
         dWhy += np.dot(do, hs[t].T)
         dby += do
-        dhnext += np.dot(Why.T, do)
+        # print("Wo.T: ", Wo.T.shape)
+        # print("bo: ", bo.shape)
+        # print("bc: ", bc.shape)
+        # print("bi: ", bi.shape)
+        # print("bf: ", bf.shape)
+        dhnext = np.dot(Why.T, do) + np.dot(Wo.T, do_gate_pre_future)[0:hs_row, ...] + np.dot(Wc.T, dc_hat_pre_future)[0:hs_row, ...] + np.dot(Wi.T, di_gate_pre_future)[0:hs_row, ...] + np.dot(Wf.T, df_gate_pre_future)[0:hs_row, ...]
 
         o_gate = sigmoid(np.dot(Wo, zs[t]) + bo)
         do_gate = dhnext * tanh(cs[t])
         dtanh_pro = o_gate * dhnext
 
+        # output gate path
         dsigmoid_o_gate = dsigmoid(o_gate)
         do_gate_pre = dsigmoid_o_gate * do_gate
         dbo += do_gate_pre
         dWo += np.dot(do_gate_pre, zs[t].T)
-
         dzs = np.dot(Wo.T, do_gate_pre)
-        dhnext = dzs[0:hs_row, ...]
-        dwes = dzs[hs_row:, ...]
+
         # print("dwes: ", dwes.shape)
         # print("dxs: ", xs[t].shape)
-        dWex += np.dot(dwes, xs[t].T)
+        # memory (c) path
+        f_gate = sigmoid(np.dot(Wf, zs[t]) + bf)
+        c_hat = tanh(np.dot(Wc, zs[t]) + bc)
+        i_gate = sigmoid(np.dot(Wi, zs[t]) + bi)
 
         dtanh_c = dtanh(tanh(cs[t]))
-        dcnext += dtanh_c * dtanh_pro
+        dcnext = dc_future * f_gate_future + dtanh_c * dtanh_pro
 
-        f_gate = sigmoid(np.dot(Wf, zs[t]) + bf)
         df_gate = dcnext * cs[t-1]
-        c_hat = tanh(np.dot(Wc, zs[t]) + bc)
         di_gate = dcnext * c_hat
-        i_gate = sigmoid(np.dot(Wi, zs[t]) + bi)
         dc_hat = i_gate * dcnext
 
+        # forget gate path
         dsigmoid_f_gate = dsigmoid(f_gate)
         df_gate_pre = dsigmoid_f_gate * df_gate
         dbf += df_gate_pre
         dWf += np.dot(df_gate_pre, zs[t].T)
+        dzs += np.dot(Wf.T, df_gate_pre)
 
+        # input gate path
         dsigmoid_i_gate = dsigmoid(i_gate)
         di_gate_pre = dsigmoid_i_gate * di_gate
         dbi += di_gate_pre
         dWi += np.dot(di_gate_pre, zs[t].T)
+        dzs += np.dot(Wi.T, di_gate_pre)
 
+        # candidate memory (c hat) path
         dtanh_c_hat = dtanh(c_hat)
         dc_hat_pre = dtanh_c_hat * dc_hat
         dbc += dc_hat_pre
         dWc += np.dot(dc_hat_pre, zs[t].T)
+        dzs += np.dot(Wc.T, dc_hat_pre)
+
+        # delta xs[t]
+        dwes = dzs[hs_row:, ...]
+        dWex += np.dot(dwes, xs[t].T)
+
+        dc_future = dcnext
+        f_gate_future = f_gate
+        do_gate_pre_future = do_gate_pre
+        dc_hat_pre_future = dc_hat_pre
+        di_gate_pre_future = di_gate_pre
+        df_gate_pre_future = df_gate_pre
 
         # IMPLEMENT YOUR BACKPROP HERE
         # refer to the file elman_rnn.py for more details
-
 
     if clipping:
         # clip to mitigate exploding gradients
@@ -249,15 +277,15 @@ def backward(activations, clipping=True):
     return gradients
 
 
-def sample(memory, seed_ix, n):
+def sample(i_memory, seed_ix, n):
     """
     sample a sequence of integers from the model
     h is memory state, seed_ix is seed letter for first time step
     """
-    (h, c) = memory
+    (h, c) = i_memory
     # print(c.shape)
     x = np.zeros((vocab_size, 1))
-    sample_ix = []
+    i_sample_ix = []
     x[seed_ix] = 1
 
     for t in range(n):
@@ -269,7 +297,6 @@ def sample(memory, seed_ix, n):
         i_gate = sigmoid(np.dot(Wi, z) + bi)
 
         c_hat = np.tanh(np.dot(Wc, z) + bc)
-
 
         c = f_gate * c + i_gate * c_hat
 
@@ -291,7 +318,7 @@ def sample(memory, seed_ix, n):
         x[index] = 1
         sample_ix.append(index)
 
-    return sample_ix
+    return i_sample_ix
 
 
 if option == 'train':
